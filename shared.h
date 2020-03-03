@@ -1,7 +1,10 @@
 #ifndef SHARED_H
 #define SHARED_H
 
+#include <inttypes.h>
+
 #include <jni.h>
+#include <jvmti.h>
 #pragma comment(lib, "jvm")
 
 // define export
@@ -14,5 +17,7 @@
 #else
 #define API_EXPORT
 #endif // _WIN32
+
+#define PRINT_PREFIX "[i] cx native agent: "
 
 #endif //SHARED_H
