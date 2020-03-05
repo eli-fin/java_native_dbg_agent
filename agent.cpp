@@ -1,10 +1,11 @@
-// todo: better name for dll, upload to repo
-
 // Compile on Linux:
 // export JAVA_HOME = <jdk foler>
-// g++ -I ${JAVA_HOME}/include -I${JAVA_HOME}/include/linux/ -g3 -shared -fPIC agent.cpp -static-libstdc++ -o agent.so
+// g++ -I ${JAVA_HOME}/include -I${JAVA_HOME}/include/linux/ -g3 -shared -fPIC agent.cpp -static-libstdc++ -o cx_java_native_dbg_agent.so
 
 // Run: java -agentpath:<dll/so file>=<folder to create logs> ...
+
+// About:
+// A native debug agent that monitors JVMs exceptions and class loads. This can help find swallowed exceptions and give more info about class load flows
 
 // Some dev notes:
 // - in general, when developing, you should run with the vm flag with -Xcheck:jni, to get more debug messages for possible errors

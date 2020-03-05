@@ -28,11 +28,11 @@
 
 // define export
 #ifdef _WIN32
-#ifdef JAVANATIVEAGENTTEST_EXPORTS
+#ifdef CX_JAVA_NATIVE_DBG_AGENT_EXPORTS
 #define API_EXPORT __declspec(dllexport)
 #else
 #define API_EXPORT
-#endif // JAVANATIVEAGENTTEST_EXPORTS
+#endif // CX_JAVA_NATIVE_DBG_AGENT_EXPORTS
 #else
 #define API_EXPORT
 #endif // _WIN32
