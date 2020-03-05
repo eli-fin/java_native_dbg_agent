@@ -5,6 +5,7 @@
 
 #include <inttypes.h>
 #include <string.h>
+#include <exception>
 #include <mutex>
 #include <string>
 #include <locale>
