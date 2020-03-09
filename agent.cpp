@@ -22,12 +22,15 @@ static std::mutex mtx_exceptions;
 
 // Helper macros to simplify error handling
 
+// Macros to convert constant int to string
 #define _STR_IMPL(x) #x
 #define STR(x) _STR_IMPL(x)
 
+// Macro to throw exception with file/line number
 #define THROW_ON_ERROR(cond, msg) \
 if (cond) { throw std::runtime_error(msg " at " __FILE__ ":" STR(__LINE__)); }
 
+// Macro to throw exception on jni error with file/line number, after clearing exceptions state
 #define THROW_ON_JNI_ERROR(cond, msg) \
 if (cond) \
 { \
@@ -35,6 +38,7 @@ if (cond) \
 	throw std::runtime_error(msg " at " __FILE__ ":" STR(__LINE__)); \
 }
 
+// Macro to throw exception on jvmti error with error code and file/line number
 #define THROW_ON_JVMTI_ERROR(ret, msg) \
 if (ret != JVMTI_ERROR_NONE) \
 { \
@@ -46,12 +50,15 @@ if (ret != JVMTI_ERROR_NONE) \
 	throw _ex; \
 }
 
-#define JNI_FIND_CLASS(var_name, cls) { var_name = jni_env->FindClass(cls); THROW_ON_JNI_ERROR(var_name == NULL, "FindClass " cls); }
-#define JNI_FIND_METHOD_ID(var_name, cls, method_name, method_sig) { var_name = jni_env->GetMethodID(cls, method_name, method_sig); THROW_ON_JNI_ERROR(var_name == NULL, "GetMethodID " method_name method_sig); }
+// Macros to initialized a jni class/methodId if null, and throw on error
+#define JNI_FIND_CLASS_IF_NULL(var_name, cls) { if (var_name == NULL) { var_name = jni_env->FindClass(cls); THROW_ON_JNI_ERROR(var_name == NULL, "FindClass " cls); } }
+#define JNI_FIND_METHOD_ID_IF_NULL(var_name, cls, method_name, method_sig) { if (var_name == NULL) { var_name = jni_env->GetMethodID(cls, method_name, method_sig); THROW_ON_JNI_ERROR(var_name == NULL, "GetMethodID " method_name method_sig); } }
 
+// Some helper methods. All throw on error
 class Util
 {
 public:
+	// Get java thread id
 	jlong static GetJavaThreadID(JNIEnv* jni_env, jthread thread)
 	{
 		jclass thread_cls = jni_env->FindClass("java/lang/Thread");
@@ -64,6 +71,7 @@ public:
 		return tid;
 	}
 
+	// Convert methodId to "<cls name>#<method name> : <method signature>" string
 	char static *GetMethodString(jvmtiEnv* jvmti_env, jmethodID method)
 	{
 		jvmtiError jvmti_error;
@@ -84,6 +92,7 @@ public:
 		return ret;
 	}
 
+	// Get cstr from jstring (handle conversion from utf8 to wchar)
 	wchar_t static* GetCStr(JNIEnv* jni_env, jstring jstr)
 	{
 		std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
@@ -100,26 +109,26 @@ public:
 		return ret;
 	}
 
-
+	// Get exception stack trace as string (by calling back to java's printStackTrace)
 	wchar_t static* GetExceptionStackTrace(JNIEnv* jni_env, jobject throwable)
 	{
 		// Find all methods
-		jclass sw_class; JNI_FIND_CLASS(sw_class, "java/io/StringWriter");
-		jclass pw_class; JNI_FIND_CLASS(pw_class, "java/io/PrintWriter");
-		jclass str_buf_class; JNI_FIND_CLASS(str_buf_class, "java/lang/StringBuffer");
+		static jclass sw_class = NULL; JNI_FIND_CLASS_IF_NULL(sw_class, "java/io/StringWriter");
+		static jclass pw_class = NULL; JNI_FIND_CLASS_IF_NULL(pw_class, "java/io/PrintWriter");
+		static jclass str_buf_class = NULL; JNI_FIND_CLASS_IF_NULL(str_buf_class, "java/lang/StringBuffer");
 
-		jmethodID sw_ctor; JNI_FIND_METHOD_ID(sw_ctor, sw_class, "<init>", "()V");
-		jmethodID pw_ctor; JNI_FIND_METHOD_ID(pw_ctor, pw_class, "<init>", "(Ljava/io/Writer;)V");
-		jmethodID sw_getbuf; JNI_FIND_METHOD_ID(sw_getbuf, sw_class, "getBuffer", "()Ljava/lang/StringBuffer;");
-		jmethodID str_buf_set_len; JNI_FIND_METHOD_ID(str_buf_set_len, str_buf_class, "setLength", "(I)V");
+		static jmethodID sw_ctor = NULL; JNI_FIND_METHOD_ID_IF_NULL(sw_ctor, sw_class, "<init>", "()V");
+		static jmethodID pw_ctor = NULL; JNI_FIND_METHOD_ID_IF_NULL(pw_ctor, pw_class, "<init>", "(Ljava/io/Writer;)V");
 
-		jclass throwable_cls; JNI_FIND_CLASS(throwable_cls, "java/lang/Throwable");
-		jmethodID throwable_print_stack; JNI_FIND_METHOD_ID(throwable_print_stack, throwable_cls, "printStackTrace", "(Ljava/io/PrintWriter;)V");
+		static jclass throwable_cls = NULL; JNI_FIND_CLASS_IF_NULL(throwable_cls, "java/lang/Throwable");
+		static jmethodID throwable_print_stack = NULL; JNI_FIND_METHOD_ID_IF_NULL(throwable_print_stack, throwable_cls, "printStackTrace", "(Ljava/io/PrintWriter;)V");
 
-		jclass object_cls; JNI_FIND_CLASS(object_cls, "java/lang/Object");
-		jmethodID object_to_string; JNI_FIND_METHOD_ID(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
+		static jclass object_cls = NULL; JNI_FIND_CLASS_IF_NULL(object_cls, "java/lang/Object");
+		static jmethodID object_to_string = NULL; JNI_FIND_METHOD_ID_IF_NULL(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
 
-		// Create objects
+		// Create objects (do this for every call, to avoid threading issues. and we don't want to lock, because
+		//  this method can be reenterred in the same thread, becasue an exception can occure during the processing
+		//  of an exception, and the writer/printer instances can get mixed up)
 		jobject str_writer = jni_env->NewObject(sw_class, sw_ctor);
 		THROW_ON_JNI_ERROR(jni_env->ExceptionCheck() == JNI_TRUE, "NewObject sw_ctor");
 		jobject print_writer = jni_env->NewObject(pw_class, pw_ctor, str_writer);
@@ -133,17 +142,12 @@ public:
 		jstring printStackTrace_str_result = (jstring)jni_env->CallObjectMethod(str_writer, object_to_string);
 		THROW_ON_JNI_ERROR(jni_env->ExceptionCheck() == JNI_TRUE, "CallObjectMethod object_to_string");
 		wchar_t* printStackTrace_cstr_result = Util::GetCStr(jni_env, printStackTrace_str_result);
-
-		// Call StringWriter.getBuffer().setLength(0) to reset
-		jobject buf = jni_env->CallObjectMethod(str_writer, sw_getbuf);
-		THROW_ON_JNI_ERROR(jni_env->ExceptionCheck() == JNI_TRUE, "CallObjectMethod sw_getbuf");
-		jni_env->CallVoidMethod(buf, str_buf_set_len, 0);
-		THROW_ON_JNI_ERROR(jni_env->ExceptionCheck() == JNI_TRUE, "CallVoidMethod str_buf_set_len");
-
+		
 		return printStackTrace_cstr_result;
 	}
 };
 
+// Print info on exception thrown (stack, and catch location)
 void JNICALL callback_on_Exception(
 	jvmtiEnv* jvmti_env,
 	JNIEnv* jni_env,
@@ -158,8 +162,8 @@ void JNICALL callback_on_Exception(
 	{
 		jvmtiError jvmti_error;
 		
-		jclass object_cls; JNI_FIND_CLASS(object_cls, "java/lang/Object");
-		jmethodID object_to_string; JNI_FIND_METHOD_ID(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
+		static jclass object_cls = NULL; JNI_FIND_CLASS_IF_NULL(object_cls, "java/lang/Object");
+		static jmethodID object_to_string = NULL; JNI_FIND_METHOD_ID_IF_NULL(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
 
 		jlong tid = Util::GetJavaThreadID(jni_env, thread);
 
@@ -195,7 +199,7 @@ void JNICALL callback_on_Exception(
 	}
 }
 
-
+// Print info on loaded class and stack trace that loaded it
 void JNICALL callback_on_ClassLoad(
 	jvmtiEnv* jvmti_env,
 	JNIEnv* jni_env,
@@ -233,6 +237,7 @@ void JNICALL callback_on_ClassLoad(
 	}
 }
 
+// Initialize agent and set callbacks
 extern "C" JNIEXPORT jint JNICALL
 Agent_OnLoad(JavaVM* vm, char* options, void* reserved)
 {
