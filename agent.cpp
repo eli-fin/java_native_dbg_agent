@@ -12,6 +12,9 @@
 // - be careful with calling back to java code in the events, as this can cause all kind of unexpected issues or recursions
 // - don't initialize method static variables with jvm calls from within the callbacks, because their initialization is
 //   synchronized and this might causes deadlocks or exceptions
+// - don't store jclass/jmethodID and other jni references as static vars (to save initializing them every call).
+//   initialize them every time you need them. otherwise, those variables might become invalid (by being moved or GCd, I guess)
+//   and cause weird crashes
 
 #include "shared.h"
 
@@ -113,18 +116,18 @@ public:
 	wchar_t static* GetExceptionStackTrace(JNIEnv* jni_env, jobject throwable)
 	{
 		// Find all methods
-		static jclass sw_class = NULL; JNI_FIND_CLASS_IF_NULL(sw_class, "java/io/StringWriter");
-		static jclass pw_class = NULL; JNI_FIND_CLASS_IF_NULL(pw_class, "java/io/PrintWriter");
-		static jclass str_buf_class = NULL; JNI_FIND_CLASS_IF_NULL(str_buf_class, "java/lang/StringBuffer");
+		jclass sw_class = NULL; JNI_FIND_CLASS_IF_NULL(sw_class, "java/io/StringWriter");
+		jclass pw_class = NULL; JNI_FIND_CLASS_IF_NULL(pw_class, "java/io/PrintWriter");
+		jclass str_buf_class = NULL; JNI_FIND_CLASS_IF_NULL(str_buf_class, "java/lang/StringBuffer");
 
-		static jmethodID sw_ctor = NULL; JNI_FIND_METHOD_ID_IF_NULL(sw_ctor, sw_class, "<init>", "()V");
-		static jmethodID pw_ctor = NULL; JNI_FIND_METHOD_ID_IF_NULL(pw_ctor, pw_class, "<init>", "(Ljava/io/Writer;)V");
+		jmethodID sw_ctor = NULL; JNI_FIND_METHOD_ID_IF_NULL(sw_ctor, sw_class, "<init>", "()V");
+		jmethodID pw_ctor = NULL; JNI_FIND_METHOD_ID_IF_NULL(pw_ctor, pw_class, "<init>", "(Ljava/io/Writer;)V");
 
-		static jclass throwable_cls = NULL; JNI_FIND_CLASS_IF_NULL(throwable_cls, "java/lang/Throwable");
-		static jmethodID throwable_print_stack = NULL; JNI_FIND_METHOD_ID_IF_NULL(throwable_print_stack, throwable_cls, "printStackTrace", "(Ljava/io/PrintWriter;)V");
+		jclass throwable_cls = NULL; JNI_FIND_CLASS_IF_NULL(throwable_cls, "java/lang/Throwable");
+		jmethodID throwable_print_stack = NULL; JNI_FIND_METHOD_ID_IF_NULL(throwable_print_stack, throwable_cls, "printStackTrace", "(Ljava/io/PrintWriter;)V");
 
-		static jclass object_cls = NULL; JNI_FIND_CLASS_IF_NULL(object_cls, "java/lang/Object");
-		static jmethodID object_to_string = NULL; JNI_FIND_METHOD_ID_IF_NULL(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
+		jclass object_cls = NULL; JNI_FIND_CLASS_IF_NULL(object_cls, "java/lang/Object");
+		jmethodID object_to_string = NULL; JNI_FIND_METHOD_ID_IF_NULL(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
 
 		// Create objects (do this for every call, to avoid threading issues. and we don't want to lock, because
 		//  this method can be reenterred in the same thread, becasue an exception can occure during the processing
@@ -162,8 +165,8 @@ void JNICALL callback_on_Exception(
 	{
 		jvmtiError jvmti_error;
 		
-		static jclass object_cls = NULL; JNI_FIND_CLASS_IF_NULL(object_cls, "java/lang/Object");
-		static jmethodID object_to_string = NULL; JNI_FIND_METHOD_ID_IF_NULL(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
+		jclass object_cls = NULL; JNI_FIND_CLASS_IF_NULL(object_cls, "java/lang/Object");
+		jmethodID object_to_string = NULL; JNI_FIND_METHOD_ID_IF_NULL(object_to_string, object_cls, "toString", "()Ljava/lang/String;");
 
 		jlong tid = Util::GetJavaThreadID(jni_env, thread);
 
