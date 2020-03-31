@@ -1,5 +1,5 @@
 // Compile on Linux:
-// export JAVA_HOME = <jdk foler>
+// export JAVA_HOME=<jdk foler>
 // g++ -I ${JAVA_HOME}/include -I${JAVA_HOME}/include/linux/ -g3 -shared -fPIC agent.cpp -static-libstdc++ -o cx_java_native_dbg_agent.so
 
 // Run: java -agentpath:<dll/so file>=<folder to create logs> ...
