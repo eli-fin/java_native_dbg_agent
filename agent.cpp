@@ -205,7 +205,7 @@ void JNICALL callback_on_Exception(
 		}
 
 		ss << ex_print_stack_result << "\n";
-		fprintf(output_file_exceptions, "%ls", ss.str().c_str());
+		fprintf(output_file_exceptions, "%ls", ss.str().c_str()); // A single printf call, which is thread-safe
 
 		delete[] ex_to_cstr_result;
 		delete[] ex_print_stack_result;
@@ -248,7 +248,7 @@ void JNICALL callback_on_ClassLoad(
 			delete[] meth_str;
 		}
 		ss << "\n";
-		fprintf(output_file_cls_load, "%ls", ss.str().c_str());
+		fprintf(output_file_cls_load, "%ls", ss.str().c_str()); // A single printf call, which is thread-safe
 	}
 	catch (std::exception & ex)
 	{
@@ -263,8 +263,8 @@ Agent_OnLoad(JavaVM* vm, char* options, void* reserved)
 	try
 	{
 		jint ret;
-		printf(PRINT_PREFIX "Info: Agent_OnLoad - options: %s\n", options == NULL ? "" : options);
-		THROW_ON_ERROR(options == NULL, "expecting options to contain folder path");
+		printf(PRINT_PREFIX "Info: Agent_OnLoad - options: %s\n", options == NULL ? "<NULL>" : *options == '\0' ? "<EMPTY>" : options);
+		THROW_ON_ERROR(options == NULL || *options == '\0', "expecting options to contain folder path");
 
 		// get env
 		jvmtiEnv* jvmti = NULL;
@@ -289,7 +289,7 @@ Agent_OnLoad(JavaVM* vm, char* options, void* reserved)
 		THROW_ON_JVMTI_ERROR(ret, "SetEventNotificationMode 2");
 
 		// Open log files
-		char fname[1000];
+		char fname[5000];
 		sprintf(fname, "%s/cx_cls_loads_%d.log", options, getpid());
 		printf(PRINT_PREFIX "Opening file %s\n", fname);
 		if ((output_file_cls_load = fopen(fname, "wb")) == NULL)
@@ -312,4 +312,15 @@ Agent_OnLoad(JavaVM* vm, char* options, void* reserved)
 		printf(PRINT_PREFIX "Error: Agent_OnLoad: %s\n", ex.what());
 		return JNI_ERR;
 	}
+}
+
+// Cleanup
+extern "C" JNIEXPORT void JNICALL
+Agent_OnUnload(JavaVM * vm)
+{
+	printf(PRINT_PREFIX "Info: Agent_OnUnload\n");
+	if (output_file_cls_load != NULL)
+		fclose(output_file_cls_load);
+	if (output_file_exceptions != NULL)
+		fclose(output_file_exceptions);
 }
