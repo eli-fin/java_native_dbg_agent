@@ -20,8 +20,6 @@
 
 static FILE* output_file_cls_load = NULL;
 static FILE* output_file_exceptions = NULL;
-static std::mutex mtx_cls_load;
-static std::mutex mtx_exceptions;
 
 // Helper macros to simplify error handling
 
@@ -170,6 +168,14 @@ void JNICALL callback_on_Exception(
 
 		jlong tid = Util::GetJavaThreadID(jni_env, thread);
 
+		jclass ex_class = jni_env->GetObjectClass(exception);
+		THROW_ON_JNI_ERROR(ex_class == NULL, "GetObjectClass exception");
+
+		// Get exception class signature
+		char* ex_cls_sig = NULL, * ex_cls_generic_sig = NULL;
+		jvmti_error = jvmti_env->GetClassSignature(ex_class, &ex_cls_sig, &ex_cls_generic_sig);
+		THROW_ON_JVMTI_ERROR(jvmti_error, "GetClassSignature ex_class");
+
 		// Get exception.toString()
 		jstring ex_to_str_result = (jstring)jni_env->CallObjectMethod(exception, object_to_string);
 		THROW_ON_JNI_ERROR(jni_env->ExceptionCheck() == JNI_TRUE, "CallObjectMethod object_to_string");
@@ -179,20 +185,28 @@ void JNICALL callback_on_Exception(
 
 		jint ex_hash;
 		jvmti_error = jvmti_env->GetObjectHashCode(exception, &ex_hash);
-		THROW_ON_JVMTI_ERROR(jvmti_error, "CallObjectMethod object_to_string");
+		THROW_ON_JVMTI_ERROR(jvmti_error, "GetObjectHashCode exception");
 
-		// Print catch location
-		std::lock_guard<std::mutex> lock(mtx_exceptions);
+		// Format exception info
+		std::wostringstream ss;
+		ss << PRINT_PREFIX "callback_on_Exception, thread=" << tid << ", class=" << ex_cls_sig << "\n"
+			<< "ex.toString: " << ex_to_cstr_result << ", ex.hashCode: " << ex_hash << "\n";
+
+		// Add catch location, if exists
 		if (catch_method != NULL)
 		{
 			const char* meth_str = Util::GetMethodString(jvmti_env, catch_method);
-			fprintf(output_file_exceptions, PRINT_PREFIX "callback_on_Exception - %" PRId64 " - %ls - 0x%" PRIX32 "\n\t- will be caught in: %s %" PRId64 "\n%ls\n", tid, ex_to_cstr_result, ex_hash, meth_str, catch_location, ex_print_stack_result);
+			ss << "\t- will be caught in: " << meth_str << " (byte code index: " << catch_location << ")\n";
 			delete[] meth_str;
 		}
 		else
 		{
-			fprintf(output_file_exceptions, PRINT_PREFIX "callback_on_Exception - %" PRId64 " - %ls - 0x%" PRIX32 "\n\t- will not be caught!!\n%ls\n", tid, ex_to_cstr_result, ex_hash, ex_print_stack_result);
+			ss << "\t- will not be caught!!\n";
 		}
+
+		ss << ex_print_stack_result << "\n";
+		fprintf(output_file_exceptions, "%ls", ss.str().c_str());
+
 		delete[] ex_to_cstr_result;
 		delete[] ex_print_stack_result;
 	}
@@ -224,15 +238,17 @@ void JNICALL callback_on_ClassLoad(
 		jvmti_env->GetStackTrace(thread, 0, sizeof(frames) / sizeof(frames[0]), (jvmtiFrameInfo*)&frames, &count);
 		THROW_ON_JVMTI_ERROR(jvmti_error, "GetStackTrace");
 
-		std::lock_guard<std::mutex> lock(mtx_cls_load);
-		fprintf(output_file_cls_load, PRINT_PREFIX "callback_on_ClassLoad - % " PRId64 " - %s%s\n", tid, cls_sig, count == 0 ? "(no java stack)" : "");
+		std::wostringstream ss;
+		ss << PRINT_PREFIX "callback_on_ClassLoad, thread=" << tid << ", class=" << cls_sig << (count == 0 ? " (no java stack)" : "") << "\n";
+
 		for (jint i = 0; i < count; ++i)
 		{
 			const char* meth_str = Util::GetMethodString(jvmti_env, frames[i].method);
-			fprintf(output_file_cls_load, "\tat %s% " PRId64 "\n", meth_str, frames[i].location);
+			ss << "\tat " << meth_str << " " << frames[i].location << "\n";
 			delete[] meth_str;
 		}
-		fprintf(output_file_cls_load, "\n");
+		ss << "\n";
+		fprintf(output_file_cls_load, "%ls", ss.str().c_str());
 	}
 	catch (std::exception & ex)
 	{
