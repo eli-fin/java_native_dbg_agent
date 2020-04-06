@@ -1,6 +1,6 @@
 // Compile on Linux:
 // export JAVA_HOME=<jdk foler>
-// g++ -I ${JAVA_HOME}/include -I${JAVA_HOME}/include/linux/ -g3 -shared -fPIC agent.cpp -static-libstdc++ -o cx_java_native_dbg_agent.so
+// g++ -I ${JAVA_HOME}/include -I${JAVA_HOME}/include/linux/ -Wall -g3 -shared -fPIC agent.cpp -static-libstdc++ -o cx_java_native_dbg_agent.so
 
 // Run: java -agentpath:<dll/so file>=<folder to create logs> ...
 
@@ -98,7 +98,6 @@ public:
 	{
 		std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 
-		jsize str_len = jni_env->GetStringUTFLength(jstr);
 		const char* utf_str = jni_env->GetStringUTFChars(jstr, NULL);
 		THROW_ON_ERROR(utf_str == NULL, "GetCStr GetStringUTFChars");
 		std::wstring wstr = converter.from_bytes(utf_str);

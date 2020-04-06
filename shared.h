@@ -24,7 +24,6 @@
 
 #include <jni.h>
 #include <jvmti.h>
-#pragma comment(lib, "jvm")
 
 // define export
 #ifdef _WIN32
